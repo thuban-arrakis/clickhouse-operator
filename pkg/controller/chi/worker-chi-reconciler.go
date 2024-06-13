@@ -22,8 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/d4l3k/messagediff.v1"
-
 	apps "k8s.io/api/apps/v1"
 	core "k8s.io/api/core/v1"
 	policy "k8s.io/api/policy/v1"
@@ -971,7 +969,7 @@ func (w *worker) dumpStatefulSetDiff(host *api.ChiHost, cur, new *apps.StatefulS
 		return
 	}
 
-	if diff, equal := messagediff.DeepDiff(cur.Spec, new.Spec); equal {
+	if diff, equal := util.DeepDiff(cur.Spec, new.Spec); equal {
 		w.a.V(1).M(host).Info("StatefulSet.Spec ARE EQUAL")
 	} else {
 		w.a.V(1).Info(
@@ -981,7 +979,7 @@ func (w *worker) dumpStatefulSetDiff(host *api.ChiHost, cur, new *apps.StatefulS
 			util.MessageDiffItemString("removed .spec items", "none", "", diff.Removed),
 		)
 	}
-	if diff, equal := messagediff.DeepDiff(cur.Labels, new.Labels); equal {
+	if diff, equal := util.DeepDiff(cur.Labels, new.Labels); equal {
 		w.a.V(1).M(host).Info("StatefulSet.Labels ARE EQUAL")
 	} else {
 		if len(cur.Labels)+len(new.Labels) > 0 {
@@ -993,7 +991,7 @@ func (w *worker) dumpStatefulSetDiff(host *api.ChiHost, cur, new *apps.StatefulS
 			)
 		}
 	}
-	if diff, equal := messagediff.DeepDiff(cur.Annotations, new.Annotations); equal {
+	if diff, equal := util.DeepDiff(cur.Annotations, new.Annotations); equal {
 		w.a.V(1).M(host).Info("StatefulSet.Annotations ARE EQUAL")
 	} else {
 		if len(cur.Annotations)+len(new.Annotations) > 0 {

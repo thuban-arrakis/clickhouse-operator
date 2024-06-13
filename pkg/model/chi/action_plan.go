@@ -15,7 +15,7 @@
 package chi
 
 import (
-	"gopkg.in/d4l3k/messagediff.v1"
+	"strings"
 
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -23,24 +23,24 @@ import (
 	"github.com/altinity/clickhouse-operator/pkg/util"
 )
 
-// ActionPlan is an action plan with list of differences between two CHIs
+// ActionPlan is an action plan with a list of differences between two CHIs
 type ActionPlan struct {
 	old *api.ClickHouseInstallation
 	new *api.ClickHouseInstallation
 
-	specDiff  *messagediff.Diff
+	specDiff  util.DiffResult
 	specEqual bool
 
-	labelsDiff  *messagediff.Diff
+	labelsDiff  util.DiffResult
 	labelsEqual bool
 
-	deletionTimestampDiff  *messagediff.Diff
+	deletionTimestampDiff  util.DiffResult
 	deletionTimestampEqual bool
 
-	finalizersDiff  *messagediff.Diff
+	finalizersDiff  util.DiffResult
 	finalizersEqual bool
 
-	attributesDiff  *messagediff.Diff
+	attributesDiff  util.DiffResult
 	attributesEqual bool
 }
 
@@ -52,41 +52,41 @@ func NewActionPlan(old, new *api.ClickHouseInstallation) *ActionPlan {
 	}
 
 	if (old != nil) && (new != nil) {
-		ap.specDiff, ap.specEqual = messagediff.DeepDiff(ap.old.Spec, ap.new.Spec)
-		ap.labelsDiff, ap.labelsEqual = messagediff.DeepDiff(ap.old.Labels, ap.new.Labels)
+		ap.specDiff, ap.specEqual = util.DeepDiff(ap.old.Spec, ap.new.Spec)
+		ap.labelsDiff, ap.labelsEqual = util.DeepDiff(ap.old.Labels, ap.new.Labels)
 		ap.deletionTimestampEqual = ap.timestampEqual(ap.old.DeletionTimestamp, ap.new.DeletionTimestamp)
-		ap.deletionTimestampDiff, _ = messagediff.DeepDiff(ap.old.DeletionTimestamp, ap.new.DeletionTimestamp)
-		ap.finalizersDiff, ap.finalizersEqual = messagediff.DeepDiff(ap.old.Finalizers, ap.new.Finalizers)
-		ap.attributesDiff, ap.attributesEqual = messagediff.DeepDiff(ap.old.EnsureRuntime().GetAttributes(), ap.new.EnsureRuntime().GetAttributes())
+		ap.deletionTimestampDiff, _ = util.DeepDiff(ap.old.DeletionTimestamp, ap.new.DeletionTimestamp)
+		ap.finalizersDiff, ap.finalizersEqual = util.DeepDiff(ap.old.Finalizers, ap.new.Finalizers)
+		ap.attributesDiff, ap.attributesEqual = util.DeepDiff(ap.old.EnsureRuntime().GetAttributes(), ap.new.EnsureRuntime().GetAttributes())
 	} else if old == nil {
-		ap.specDiff, ap.specEqual = messagediff.DeepDiff(nil, ap.new.Spec)
-		ap.labelsDiff, ap.labelsEqual = messagediff.DeepDiff(nil, ap.new.Labels)
+		ap.specDiff, ap.specEqual = util.DeepDiff(nil, ap.new.Spec)
+		ap.labelsDiff, ap.labelsEqual = util.DeepDiff(nil, ap.new.Labels)
 		ap.deletionTimestampEqual = ap.timestampEqual(nil, ap.new.DeletionTimestamp)
-		ap.deletionTimestampDiff, _ = messagediff.DeepDiff(nil, ap.new.DeletionTimestamp)
-		ap.finalizersDiff, ap.finalizersEqual = messagediff.DeepDiff(nil, ap.new.Finalizers)
-		ap.attributesDiff, ap.attributesEqual = messagediff.DeepDiff(nil, ap.new.EnsureRuntime().GetAttributes())
+		ap.deletionTimestampDiff, _ = util.DeepDiff(nil, ap.new.DeletionTimestamp)
+		ap.finalizersDiff, ap.finalizersEqual = util.DeepDiff(nil, ap.new.Finalizers)
+		ap.attributesDiff, ap.attributesEqual = util.DeepDiff(nil, ap.new.EnsureRuntime().GetAttributes())
 	} else if new == nil {
-		ap.specDiff, ap.specEqual = messagediff.DeepDiff(ap.old.Spec, nil)
-		ap.labelsDiff, ap.labelsEqual = messagediff.DeepDiff(ap.old.Labels, nil)
+		ap.specDiff, ap.specEqual = util.DeepDiff(ap.old.Spec, nil)
+		ap.labelsDiff, ap.labelsEqual = util.DeepDiff(ap.old.Labels, nil)
 		ap.deletionTimestampEqual = ap.timestampEqual(ap.old.DeletionTimestamp, nil)
-		ap.deletionTimestampDiff, _ = messagediff.DeepDiff(ap.old.DeletionTimestamp, nil)
-		ap.finalizersDiff, ap.finalizersEqual = messagediff.DeepDiff(ap.old.Finalizers, nil)
-		ap.attributesDiff, ap.attributesEqual = messagediff.DeepDiff(ap.old.EnsureRuntime().GetAttributes(), nil)
+		ap.deletionTimestampDiff, _ = util.DeepDiff(ap.old.DeletionTimestamp, nil)
+		ap.finalizersDiff, ap.finalizersEqual = util.DeepDiff(ap.old.Finalizers, nil)
+		ap.attributesDiff, ap.attributesEqual = util.DeepDiff(ap.old.EnsureRuntime().GetAttributes(), nil)
 	} else {
 		// Both are nil
-		ap.specDiff = nil
+		ap.specDiff = util.DiffResult{}
 		ap.specEqual = true
 
-		ap.labelsDiff = nil
+		ap.labelsDiff = util.DiffResult{}
 		ap.labelsEqual = true
 
-		ap.deletionTimestampDiff = nil
+		ap.deletionTimestampDiff = util.DiffResult{}
 		ap.deletionTimestampEqual = true
 
-		ap.finalizersDiff = nil
+		ap.finalizersDiff = util.DiffResult{}
 		ap.finalizersEqual = true
 
-		ap.attributesDiff = nil
+		ap.attributesDiff = util.DiffResult{}
 		ap.attributesEqual = true
 	}
 
@@ -113,32 +113,33 @@ func (ap *ActionPlan) timestampEqual(old, new *meta.Time) bool {
 // excludePaths - sanitize diff - do not pay attention to changes in some paths, such as
 // ObjectMeta.ResourceVersion
 func (ap *ActionPlan) excludePaths() {
-	if ap.specDiff == nil {
+	if len(ap.specDiff.Modified) == 0 {
 		return
 	}
 
-	excludePaths := make([]*messagediff.Path, 0)
+	excludePaths := make([]string, 0)
 	// Walk over all .diff.Modified paths and find .ObjectMeta.ResourceVersion path
-	for ptrPath := range ap.specDiff.Modified {
-		for i := range *ptrPath {
-			pathNodeCurr := (*ptrPath)[i]
-			pathNodePrev := (*ptrPath)[i]
+	for path := range ap.specDiff.Modified {
+		pathParts := strings.Split(path, ".")
+		for i := range pathParts {
+			pathNodeCurr := pathParts[i]
+			pathNodePrev := ""
 			if i > 0 {
 				// We have prev node
-				pathNodePrev = (*ptrPath)[i-1]
+				pathNodePrev = pathParts[i-1]
 			}
 
-			if ap.isExcludedPath(pathNodePrev.String(), pathNodeCurr.String()) {
+			if ap.isExcludedPath(pathNodePrev, pathNodeCurr) {
 				// This path should be excluded from Modified
-				excludePaths = append(excludePaths, ptrPath)
+				excludePaths = append(excludePaths, path)
 				break
 			}
 		}
 	}
 
 	// Exclude paths from diff.Modified
-	for _, ptrPath := range excludePaths {
-		delete(ap.specDiff.Modified, ptrPath)
+	for _, path := range excludePaths {
+		delete(ap.specDiff.Modified, path)
 	}
 }
 
@@ -166,18 +167,14 @@ func (ap *ActionPlan) HasActionsToDo() bool {
 
 	// Something is not equal
 
-	if ap.specDiff != nil {
-		if len(ap.specDiff.Added)+len(ap.specDiff.Removed)+len(ap.specDiff.Modified) > 0 {
-			// Spec section has some modifications
-			return true
-		}
+	if len(ap.specDiff.Added)+len(ap.specDiff.Removed)+len(ap.specDiff.Modified) > 0 {
+		// Spec section has some modifications
+		return true
 	}
 
-	if ap.labelsDiff != nil {
-		if len(ap.labelsDiff.Added)+len(ap.labelsDiff.Removed)+len(ap.labelsDiff.Modified) > 0 {
-			// Labels section has some modifications
-			return true
-		}
+	if len(ap.labelsDiff.Added)+len(ap.labelsDiff.Removed)+len(ap.labelsDiff.Modified) > 0 {
+		// Labels section has some modifications
+		return true
 	}
 
 	return !ap.deletionTimestampEqual || !ap.finalizersEqual || !ap.attributesEqual

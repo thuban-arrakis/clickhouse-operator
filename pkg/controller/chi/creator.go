@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"gopkg.in/d4l3k/messagediff.v1"
 	apps "k8s.io/api/apps/v1"
 	core "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -75,7 +74,7 @@ func (c *Controller) updateStatefulSet(
 	updatedStatefulSet, err := c.kubeClient.AppsV1().StatefulSets(newStatefulSet.Namespace).Update(ctx, newStatefulSet, controller.NewUpdateOptions())
 	if err != nil {
 		log.V(1).M(host).F().Error("StatefulSet update failed. err: %v", err)
-		diff, equal := messagediff.DeepDiff(oldStatefulSet.Spec, newStatefulSet.Spec)
+		diff, equal := util.DeepDiff(oldStatefulSet.Spec, newStatefulSet.Spec)
 
 		str := ""
 		if equal {
@@ -98,6 +97,7 @@ func (c *Controller) updateStatefulSet(
 			// Something modified
 			str += util.MessageDiffItemString("modified spec items", "none", "", diff.Modified)
 		}
+
 		log.V(1).M(host).F().Error("%s", str)
 
 		return errCRUDRecreate
